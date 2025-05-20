@@ -6,11 +6,13 @@ import com.zenith.feature.whitelist.PlayerEntry;
 import com.zenith.module.impl.ActiveHours.ActiveTime;
 import it.unimi.dsi.fastutil.ints.IntArraySet;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
 import org.geysermc.mcprotocollib.network.ProxyInfo;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 
 
 public final class Config {
@@ -75,6 +77,23 @@ public final class Config {
         public final ChatSigning chatSigning = new ChatSigning();
         public final Extra extra = new Extra();
         public final Inventory inventory = new Inventory();
+        public final ChatSchemas chatSchemas = new ChatSchemas();
+
+        public static final class ChatSchemas {
+            public ChatSchema defaultSchema = new ChatSchema(
+                "<$s> $m",
+                "$s whispers: $m",
+                "to $r: $m"
+            );
+            public LinkedHashMap<String, ChatSchema> serverSchemas = new LinkedHashMap<>();
+
+            @RequiredArgsConstructor
+            public static final class ChatSchema {
+                public final String publicChat;
+                public final String whisperInbound;
+                public final String whisperOutbound;
+            }
+        }
 
         public static final class Inventory {
             public int actionDelayTicks = 5;

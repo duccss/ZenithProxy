@@ -5,7 +5,8 @@ import org.geysermc.mcprotocollib.protocol.data.game.PlayerListEntry;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
-import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.zenith.Globals.CACHE;
 import static com.zenith.Globals.CONFIG;
@@ -72,101 +73,99 @@ public class ChatSchemaParser {
         }
     }
 
-    private static @Nullable ChatParseResult tryParseChat0(ChatType type, String rawInput, String inputSchema) {
-        var schema = Arrays.asList(inputSchema.split(" "));
-        var input = Arrays.asList(rawInput.split(" "));
+    // todo: compiled patterns could be cached
+    private static Pattern compilePattern(String schema) {
+        StringBuilder pattern = new StringBuilder();
+        pattern.append("\\Q");
+        for (int i = 0; i < schema.length(); i++) {
+            char c = schema.charAt(i);
+            if (c == '$' && (i + 1 < schema.length())) {
+                var potentialToken = schema.substring(i, i + 2);
+                boolean found = true;
+                String p = "";
+                switch (potentialToken) {
+                    case senderToken -> p = "([\\w\\d_]+)";
+                    case receiverToken -> p = "([\\w\\d_]+)";
+                    case messageToken -> p = "(.+)";
+                    case wildcardStringToken -> p = "(.+)";
+                    default -> found = false;
+                }
+                if (found) {
+                    pattern.append("\\E");
+                    pattern.append(p);
+                    pattern.append("\\Q");
+                    i++;
+                    continue;
+                }
+            }
+            pattern.append(c);
+        }
+        pattern.append("\\E");
+        return Pattern.compile(pattern.toString());
+    }
+
+    private static @Nullable ChatParseResult tryParseChat0(ChatType type, String rawInput, String schema) {
+        Pattern pattern = compilePattern(schema);
+        Matcher matcher = pattern.matcher(rawInput);
+        if (!matcher.matches()) {
+            return null;
+        }
+        int groupCount = matcher.groupCount();
+        String[] groups = new String[groupCount];
+        for (int i = 0; i < groupCount; i++) {
+            groups[i] = matcher.group(i + 1); // Group indices start at 1
+        }
+
         PlayerListEntry sender = null;
         PlayerListEntry receiver = null;
         String messageContent = null;
 
-        for (int i = 0; i < schema.size(); i++) {
-            var schemaWord = schema.get(i);
-            var inputWord = input.get(i);
-            if (schemaWord.contains("$")) {
-                if (schemaWord.length() == 2) {
-                    // single token
-                    if (schemaWord.equals(senderToken)) {
-                        var senderEntryOptional = CACHE.getTabListCache().getFromName(inputWord);
-                        if (senderEntryOptional.isEmpty()) {
+        int index = 0;
+        for (int i = 0; i < schema.length(); i++) {
+            char c = schema.charAt(i);
+            if (c == '$' && (i + 1 < schema.length())) {
+                var potentialToken = schema.substring(i, i + 2);
+                switch (potentialToken) {
+                    case senderToken -> {
+                        if (index >= groupCount) {
                             return null;
-                        } else {
-                            sender = senderEntryOptional.get();
                         }
-                    } else if (schemaWord.equals(receiverToken)) {
-                        var receiverEntryOptional = CACHE.getTabListCache().getFromName(inputWord);
-                        if (receiverEntryOptional.isEmpty()) {
+                        String s = groups[index];
+                        var profile = CACHE.getTabListCache().getFromName(s);
+                        if (profile.isEmpty()) {
                             return null;
-                        } else {
-                            receiver = receiverEntryOptional.get();
                         }
-                    } else if (schemaWord.equals(messageToken)) {
-                        // match rest of the message
-                        // as long as we don't have any following schema tokens
-                        if (i != schema.size() - 1) {
-                            // we have more schema tokens
-                            // todo: handle this
-                            return null;
-                        } else {
-                            messageContent = String.join(" ", input.subList(i, input.size()));
-                        }
-                    } else if (schemaWord.equals(wildcardStringToken)) {
-                        // match until the next schema token, including spaces and multiple words
-                        // todo:
-                        continue;
+                        sender = profile.get();
+                        index++;
                     }
-                } else {
-                    // single token with extra characters
-                    var tokenStartIndex = schemaWord.indexOf("$");
-                    // all tokens are 2 characters long
-                    var tokenEndIndex = schemaWord.indexOf("$") + 2;
-                    var token = schemaWord.substring(tokenStartIndex, tokenEndIndex);
-                    String leadingText = schemaWord.substring(0, tokenStartIndex);
-                    String trailingText = schemaWord.substring(tokenEndIndex);
-                    // check if the leading text matches
-                    if (!inputWord.startsWith(leadingText)) {
-                        return null;
-                    }
-                    // check if the trailing text matches
-                    if (!inputWord.endsWith(trailingText)) {
-                        return null;
-                    }
-                    var inputWordCleaned = inputWord.substring(leadingText.length(), inputWord.length() - trailingText.length());
-                    // check if the token matches
-                    if (token.equals(senderToken)) {
-                        var senderEntryOptional = CACHE.getTabListCache().getFromName(inputWordCleaned);
-                        if (senderEntryOptional.isEmpty()) {
+                    case receiverToken -> {
+                        if (index >= groupCount) {
                             return null;
-                        } else {
-                            sender = senderEntryOptional.get();
                         }
-                    } else if (token.equals(receiverToken)) {
-                        var receiverEntryOptional = CACHE.getTabListCache().getFromName(inputWordCleaned);
-                        if (receiverEntryOptional.isEmpty()) {
+                        String s = groups[index];
+                        var profile = CACHE.getTabListCache().getFromName(s);
+                        if (profile.isEmpty()) {
                             return null;
-                        } else {
-                            receiver = receiverEntryOptional.get();
                         }
-                    } else if (token.equals(messageToken)) {
-                        // match rest of the message
-                        // as long as we don't have any following schema tokens
-                        if (i != schema.size() - 1) {
-                            // we have more schema tokens
-                            return null;
-                        } else {
-                            // todo: fix this
-                            messageContent = String.join(" ", input.subList(i, input.size()));
-                        }
-                    } else if (token.equals(wildcardStringToken)) {
-                        // match until end of token
-                        continue;
+                        receiver = profile.get();
+                        index++;
                     }
-                }
-            } else {
-                // no token, just a word
-                if (!inputWord.equals(schemaWord)) {
-                    return null;
+                    case messageToken -> {
+                        if (index >= groupCount) {
+                            return null;
+                        }
+                        messageContent = groups[index];
+                        index++;
+                    }
+                    case wildcardStringToken -> {
+                        index++;
+                    }
                 }
             }
+        }
+        if (index < groups.length) {
+            // more groups than expected
+            return null;
         }
         switch (type) {
             case PUBLIC_CHAT -> {

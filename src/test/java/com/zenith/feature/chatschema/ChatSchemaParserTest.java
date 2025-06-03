@@ -116,4 +116,20 @@ public class ChatSchemaParserTest {
         assertNull(result.receiver());
         assertEquals("what's up?", result.messageContent());
     }
+
+    @Test
+    public void testDoubleWordWildcardMatch() {
+        String input = ">> [BOSS] [ADMIN] rfresh2 : what's up?";
+        var schema = new Config.Client.ChatSchemas.ChatSchema(
+            ">> [$w] $s : $m",
+            schemaEssentials.whisperInbound,
+            schemaEssentials.whisperOutbound
+        );
+        var result = ChatSchemaParser.parse(input, schema);
+        assertNotNull(result);
+        assertEquals(ChatType.PUBLIC_CHAT, result.type());
+        assertEquals(rfresh2Entry, result.sender());
+        assertNull(result.receiver());
+        assertEquals("what's up?", result.messageContent());
+    }
 }
